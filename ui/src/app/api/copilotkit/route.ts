@@ -1,0 +1,51 @@
+import {
+  CopilotRuntime,
+  OpenAIAdapter,
+  copilotRuntimeNextJSAppRouterEndpoint,
+  copilotKitEndpoint,
+  LangGraphAgent,
+} from "@copilotkit/runtime";
+import OpenAI from "openai";
+import { NextRequest } from "next/server";
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const llmAdapter = new OpenAIAdapter({ openai });
+const langsmithApiKey = process.env.LANGSMITH_API_KEY as string;
+
+export const POST = async (req: NextRequest) => {
+  const searchParams = req.nextUrl.searchParams;
+  const deploymentUrl =
+    searchParams.get("lgcDeploymentUrl") || process.env.LGC_DEPLOYMENT_URL;
+
+  const isCrewAi = searchParams.get("coAgentsModel") === "crewai";
+
+  let runtime = new CopilotRuntime({
+    remoteEndpoints: [
+      copilotKitEndpoint({
+        url:
+          process.env.REMOTE_ACTION_URL || "http://localhost:8000/copilotkit",
+      }),
+    ],
+  });
+
+  if (deploymentUrl && !isCrewAi) {
+    runtime = new CopilotRuntime({
+      agents: {
+        research_agent: new LangGraphAgent({
+          deploymentUrl,
+          langsmithApiKey,
+          graphId: "research_agent",
+        }),
+      },
+    });
+  }
+
+  const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
+    runtime,
+    serviceAdapter: llmAdapter,
+    endpoint: "/api/copilotkit",
+  });
+
+  return handleRequest(req);
+};
+
